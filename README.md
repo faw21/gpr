@@ -192,6 +192,8 @@ gpr --raw --provider ollama > pr_description.md
 
 **[changelog-ai](https://github.com/faw21/changelog-ai)** — Generate CHANGELOG entries from git history using AI.
 
+**[git-chronicle](https://github.com/faw21/chronicle)** — AI-powered git history narrator. Turns your git log into engaging stories (narrative, timeline, or detective mode).
+
 ```bash
 # The full AI-powered git workflow:
 standup-ai --yesterday                                    # 1. morning standup
