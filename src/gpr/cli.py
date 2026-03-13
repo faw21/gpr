@@ -14,8 +14,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.syntax import Syntax
 
 from . import __version__
-from .git import GitError, analyze_diff
-from .prompt import SYSTEM_PROMPT, build_pr_prompt
+from .git import GitError, analyze_diff, analyze_staged
+from .prompt import COMMIT_SYSTEM_PROMPT, SYSTEM_PROMPT, build_commit_prompt, build_pr_prompt
 from .providers import ProviderError, get_provider
 
 console = Console()
@@ -83,6 +83,18 @@ def _print_error(msg: str) -> None:
     help="Print raw markdown without rich formatting.",
 )
 @click.option(
+    "--commit",
+    is_flag=True,
+    default=False,
+    help="Generate a conventional commit message for staged changes (instead of PR description).",
+)
+@click.option(
+    "--commit-run",
+    is_flag=True,
+    default=False,
+    help="Like --commit, but also runs 'git commit -m <message>' automatically.",
+)
+@click.option(
     "--diff-only",
     is_flag=True,
     default=False,
@@ -109,6 +121,8 @@ def main(
     gh: bool,
     output: Optional[Path],
     raw: bool,
+    commit: bool,
+    commit_run: bool,
     diff_only: bool,
     ollama_host: str,
     repo: Optional[Path],
@@ -118,6 +132,8 @@ def main(
     \b
     Examples:
       gpr                          # Generate PR description (Claude)
+      gpr --commit                 # Generate commit message for staged changes
+      gpr --commit-run             # Generate commit message and run git commit
       gpr --provider ollama        # Use local Ollama (no API key)
       gpr --provider openai        # Use OpenAI GPT-4o-mini
       gpr --style conventional     # Use conventional commits format
@@ -125,6 +141,20 @@ def main(
       gpr --gh                     # Open gh pr create
       gpr --base develop           # Diff against develop branch
     """
+    # Route to commit mode if requested
+    if commit or commit_run:
+        _run_commit_mode(
+            provider=provider,
+            model=model,
+            copy=copy,
+            raw=raw,
+            diff_only=diff_only,
+            ollama_host=ollama_host,
+            repo=repo,
+            run_commit=commit_run,
+        )
+        return
+
     # Analyze git diff
     try:
         with Progress(
@@ -210,6 +240,119 @@ def main(
     # Open gh pr create
     if gh:
         _open_gh_pr_create(result)
+
+
+def _run_commit_mode(
+    provider: str,
+    model: Optional[str],
+    copy: bool,
+    raw: bool,
+    diff_only: bool,
+    ollama_host: str,
+    repo: Optional[Path],
+    run_commit: bool,
+) -> None:
+    """Generate a conventional commit message for staged changes."""
+    import subprocess
+
+    # Analyze staged changes
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[dim]Analyzing staged changes...[/dim]"),
+            console=err_console,
+            transient=True,
+        ) as progress:
+            progress.add_task("", total=None)
+            staged = analyze_staged(repo_path=repo)
+    except GitError as e:
+        _print_error(str(e))
+        sys.exit(1)
+
+    if staged.is_empty:
+        err_console.print(
+            "[yellow]No staged changes found. Use 'git add' to stage files first.[/yellow]"
+        )
+        sys.exit(0)
+
+    err_console.print(f"[dim]Staged:[/dim] [bold]{staged.summary}[/bold]")
+
+    # Debug mode: print staged diff
+    if diff_only:
+        syntax = Syntax(staged.raw_diff, "diff", theme="monokai", line_numbers=False)
+        console.print(syntax)
+        return
+
+    user_prompt = build_commit_prompt(staged)
+
+    # Initialize provider
+    try:
+        provider_kwargs: dict = {}
+        if model:
+            provider_kwargs["model"] = model
+        if provider == "ollama":
+            provider_kwargs["host"] = ollama_host
+        ai = get_provider(provider, **provider_kwargs)
+    except ProviderError as e:
+        _print_error(str(e))
+        sys.exit(1)
+
+    # Generate commit message
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn(f"[dim]Generating commit message with {ai.name}...[/dim]"),
+            console=err_console,
+            transient=True,
+        ) as progress:
+            progress.add_task("", total=None)
+            commit_msg = ai.generate(COMMIT_SYSTEM_PROMPT, user_prompt).strip()
+    except ProviderError as e:
+        _print_error(str(e))
+        sys.exit(1)
+
+    # Output
+    if raw or not sys.stdout.isatty():
+        click.echo(commit_msg)
+    else:
+        console.print()
+        console.print(
+            Panel(
+                commit_msg,
+                title="[bold cyan]Commit Message[/bold cyan]",
+                border_style="cyan",
+            )
+        )
+        console.print()
+
+    # Copy to clipboard
+    if copy:
+        try:
+            import pyperclip
+            pyperclip.copy(commit_msg)
+            err_console.print("[green]✓[/green] Copied to clipboard")
+        except Exception as e:
+            err_console.print(f"[yellow]Warning:[/yellow] Could not copy to clipboard: {e}")
+
+    # Run git commit
+    if run_commit:
+        err_console.print(f"[dim]Running:[/dim] git commit -m [bold]\"{commit_msg[:60]}...\"[/bold]")
+        try:
+            result = subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=str(repo) if repo else None,
+            )
+            err_console.print("[green]✓[/green] Committed successfully")
+            if result.stdout:
+                err_console.print(f"[dim]{result.stdout.strip()}[/dim]")
+        except subprocess.CalledProcessError as e:
+            _print_error(f"git commit failed: {e.stderr.strip()}")
+            sys.exit(1)
+        except FileNotFoundError:
+            _print_error("git not found in PATH")
 
 
 def _open_gh_pr_create(description: str) -> None:

@@ -1,6 +1,10 @@
-# gpr — AI-powered PR descriptions from your git diff
+# gpr — AI-powered PR descriptions and commit messages from your git diff
 
-Stop writing PR descriptions by hand. `gpr` analyzes your branch diff and commit history, then generates a professional PR description in seconds — using Claude, OpenAI, or a **local Ollama model** (no API key required).
+Stop writing PR descriptions and commit messages by hand. `gpr` analyzes your git diff and generates professional content in seconds — using Claude, OpenAI, or a **local Ollama model** (no API key required).
+
+**Two modes:**
+- `gpr` — generate a full PR description from your branch diff
+- `gpr --commit` — generate a conventional commit message from staged changes
 
 ```
 $ gpr
@@ -23,20 +27,32 @@ Branch: feature/auth → main  |  3 commits, 5 files changed, +247/-31 lines
 │ - [ ] Expired tokens are rejected with 401                      │
 │ - [ ] Refresh token rotation works correctly                    │
 ╰──────────────────────────────────────────────────────────────────╯
+
+$ git add src/auth/jwt.py && gpr --commit
+Staged: 1 file(s) staged, +47/-12 lines
+
+╭────────────────────── Commit Message ───────────────────────────╮
+│ feat(auth): add JWT encode/decode with HS256 algorithm           │
+│                                                                  │
+│ Replaces session-based auth with stateless JWT tokens.          │
+│ Uses HS256 for signing with configurable secret rotation.       │
+╰──────────────────────────────────────────────────────────────────╯
+
+$ gpr --commit-run   # generates message AND runs git commit automatically
 ```
 
 ## Why gpr?
 
 | Tool | What it does | Limitation |
 |------|-------------|------------|
-| aicommits | Generates commit messages | Only commit messages, not PR descriptions |
+| aicommits | Generates commit messages | No PR description support |
 | GitHub Copilot | Suggests PR description in browser | Requires GitHub Copilot subscription |
-| **gpr** | **Full PR description from git diff** | **Works with any provider, including local LLMs** |
+| **gpr** | **PR descriptions + commit messages** | **Works with any provider, including local LLMs** |
 
 Key advantages:
+- **Two workflows in one** — PR descriptions AND conventional commit messages
 - **No vendor lock-in** — Claude, OpenAI, or local Ollama
 - **No API key required** — use `--provider ollama` with a local model
-- **PR-focused** — understands commit history, file changes, and context
 - **Integrates with `gh`** — one flag to open `gh pr create` with generated content
 
 ## Install
@@ -56,14 +72,20 @@ pipx install gpr-ai
 # Generate PR description (Claude, requires ANTHROPIC_API_KEY)
 gpr
 
+# Generate conventional commit message for staged changes
+git add -p   # stage what you want
+gpr --commit
+
+# Generate commit message AND run git commit
+gpr --commit-run
+
 # Use local Ollama — no API key needed!
 gpr --provider ollama --model llama3.2
-
-# Use OpenAI
-OPENAI_API_KEY=sk-... gpr --provider openai
+gpr --commit --provider ollama
 
 # Copy to clipboard
 gpr --copy
+gpr --commit --copy
 
 # Open gh pr create directly
 gpr --gh
@@ -90,6 +112,8 @@ Options:
   --gh                            Open 'gh pr create' with generated content.
   -o, --output PATH               Save output to file.
   --raw                           Print raw markdown without rich formatting.
+  --commit                        Generate a conventional commit message for staged changes.
+  --commit-run                    Like --commit, but also runs 'git commit -m' automatically.
   --diff-only                     Print the diff that would be sent to AI.
   --ollama-host TEXT              Ollama server URL.  [default: http://localhost:11434]
   --repo PATH                     Path to git repository.

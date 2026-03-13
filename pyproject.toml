@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gpr-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI-powered PR description generator that understands your git diff"
 readme = "README.md"
 license = { text = "MIT" }

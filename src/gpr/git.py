@@ -149,6 +149,98 @@ def _truncate_diff(diff_content: str, max_chars: int = 8000) -> str:
     return "\n".join(result_lines)
 
 
+@dataclass(frozen=True)
+class StagedDiff:
+    """Represents staged (index) changes ready to commit."""
+
+    files: list[FileDiff]
+    total_additions: int
+    total_deletions: int
+    raw_diff: str
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.files
+
+    @property
+    def summary(self) -> str:
+        n_files = len(self.files)
+        return (
+            f"{n_files} file(s) staged, "
+            f"+{self.total_additions}/-{self.total_deletions} lines"
+        )
+
+
+def analyze_staged(
+    repo_path: Optional[Path] = None,
+    max_diff_chars: int = 12000,
+) -> StagedDiff:
+    """Analyze staged (index) changes for commit message generation.
+
+    Args:
+        repo_path: Path to git repo (defaults to cwd)
+        max_diff_chars: Maximum characters for diff content
+
+    Returns:
+        StagedDiff with staged changes
+    """
+    repo = _find_repo(repo_path)
+
+    # Get staged diff (--cached / --staged)
+    try:
+        raw_diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=repo.working_dir,
+            check=True,
+        )
+        raw_diff = _truncate_diff(raw_diff_result.stdout, max_diff_chars)
+    except subprocess.CalledProcessError:
+        raw_diff = ""
+
+    # Get numstat for staged changes
+    try:
+        numstat_result = subprocess.run(
+            ["git", "diff", "--cached", "--numstat"],
+            capture_output=True,
+            text=True,
+            cwd=repo.working_dir,
+            check=True,
+        )
+        numstat_output = numstat_result.stdout
+    except subprocess.CalledProcessError:
+        numstat_output = ""
+
+    # Get file statuses for staged changes
+    try:
+        status_result = subprocess.run(
+            ["git", "diff", "--cached", "--name-status"],
+            capture_output=True,
+            text=True,
+            cwd=repo.working_dir,
+            check=True,
+        )
+        status_map: dict[str, str] = {}
+        for line in status_result.stdout.strip().splitlines():
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                status_map[parts[1].split("\t")[-1]] = parts[0][0]
+    except subprocess.CalledProcessError:
+        status_map = {}
+
+    files = _parse_numstat(numstat_output, status_map)
+    total_additions = sum(f.additions for f in files)
+    total_deletions = sum(f.deletions for f in files)
+
+    return StagedDiff(
+        files=files,
+        total_additions=total_additions,
+        total_deletions=total_deletions,
+        raw_diff=raw_diff,
+    )
+
+
 def analyze_diff(
     repo_path: Optional[Path] = None,
     base_branch: Optional[str] = None,

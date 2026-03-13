@@ -5,7 +5,7 @@ from click.testing import CliRunner
 from unittest.mock import MagicMock, patch
 
 from gpr.cli import main
-from gpr.git import BranchDiff, FileDiff, GitError
+from gpr.git import BranchDiff, FileDiff, GitError, StagedDiff
 from gpr.providers.base import ProviderError
 
 
@@ -29,7 +29,7 @@ class TestCLIBasic:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert "0.2.0" in result.output
 
     def test_help(self):
         runner = CliRunner()
@@ -162,6 +162,110 @@ class TestCLIOutput:
         runner = CliRunner()
         runner.invoke(main, ["--model", "claude-opus-4-6", "--raw"])
         mock_get_provider.assert_called_once_with("claude", model="claude-opus-4-6")
+
+
+def _make_staged():
+    files = [
+        FileDiff(path="src/auth.py", status="M", additions=15, deletions=5, diff_content=""),
+    ]
+    return StagedDiff(
+        files=files,
+        total_additions=15,
+        total_deletions=5,
+        raw_diff="diff --git a/src/auth.py b/src/auth.py\n+new line",
+    )
+
+
+class TestCLICommitMode:
+    def test_help_shows_commit_option(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert "commit" in result.output.lower()
+
+    @patch("gpr.cli.analyze_staged")
+    def test_commit_git_error_exits_1(self, mock_analyze):
+        mock_analyze.side_effect = GitError("Not a git repo")
+        runner = CliRunner()
+        result = runner.invoke(main, ["--commit"])
+        assert result.exit_code == 1
+
+    @patch("gpr.cli.analyze_staged")
+    def test_commit_empty_staged_exits_0(self, mock_analyze):
+        mock_analyze.return_value = StagedDiff(
+            files=[], total_additions=0, total_deletions=0, raw_diff=""
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["--commit"])
+        assert result.exit_code == 0
+
+    @patch("gpr.cli.get_provider")
+    @patch("gpr.cli.analyze_staged")
+    def test_commit_raw_output(self, mock_analyze, mock_get_provider):
+        mock_analyze.return_value = _make_staged()
+        mock_provider = MagicMock()
+        mock_provider.name = "claude"
+        mock_provider.generate.return_value = "feat(auth): add token refresh logic"
+        mock_get_provider.return_value = mock_provider
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["--commit", "--raw"])
+        assert result.exit_code == 0
+        assert "feat(auth)" in result.output
+
+    @patch("gpr.cli.get_provider")
+    @patch("gpr.cli.analyze_staged")
+    def test_commit_provider_error_exits_1(self, mock_analyze, mock_get_provider):
+        mock_analyze.return_value = _make_staged()
+        mock_get_provider.side_effect = ProviderError("No API key")
+        runner = CliRunner()
+        result = runner.invoke(main, ["--commit"])
+        assert result.exit_code == 1
+
+    @patch("gpr.cli.get_provider")
+    @patch("gpr.cli.analyze_staged")
+    def test_commit_diff_only_mode(self, mock_analyze, mock_get_provider):
+        mock_analyze.return_value = _make_staged()
+        runner = CliRunner()
+        result = runner.invoke(main, ["--commit", "--diff-only"])
+        mock_get_provider.assert_not_called()
+        assert result.exit_code == 0
+
+    @patch("subprocess.run")
+    @patch("gpr.cli.get_provider")
+    @patch("gpr.cli.analyze_staged")
+    def test_commit_run_calls_git_commit(self, mock_analyze, mock_get_provider, mock_run):
+        mock_analyze.return_value = _make_staged()
+        mock_provider = MagicMock()
+        mock_provider.name = "claude"
+        mock_provider.generate.return_value = "feat(auth): add token refresh"
+        mock_get_provider.return_value = mock_provider
+
+        mock_run_result = MagicMock()
+        mock_run_result.stdout = "1 file changed"
+        mock_run.return_value = mock_run_result
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["--commit-run", "--raw"])
+        assert result.exit_code == 0
+        # Verify git commit was called
+        call_args = mock_run.call_args
+        assert "git" in call_args[0][0]
+        assert "commit" in call_args[0][0]
+
+    @patch("pyperclip.copy")
+    @patch("gpr.cli.get_provider")
+    @patch("gpr.cli.analyze_staged")
+    def test_commit_copy_to_clipboard(self, mock_analyze, mock_get_provider, mock_copy):
+        mock_analyze.return_value = _make_staged()
+        mock_provider = MagicMock()
+        mock_provider.name = "claude"
+        mock_provider.generate.return_value = "fix(api): handle null response"
+        mock_get_provider.return_value = mock_provider
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["--commit", "--copy", "--raw"])
+        assert result.exit_code == 0
+        mock_copy.assert_called_once_with("fix(api): handle null response")
 
 
 class TestCLIClipboard:

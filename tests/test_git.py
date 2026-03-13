@@ -10,10 +10,12 @@ from gpr.git import (
     BranchDiff,
     FileDiff,
     GitError,
+    StagedDiff,
     _detect_base_branch,
     _parse_numstat,
     _truncate_diff,
     analyze_diff,
+    analyze_staged,
 )
 
 
@@ -188,3 +190,85 @@ class TestAnalyzeDiff:
         mock_find_repo.side_effect = GitError("Not a git repo")
         with pytest.raises(GitError):
             analyze_diff()
+
+
+class TestStagedDiff:
+    def _make_staged(self, files=None):
+        files = files or []
+        return StagedDiff(
+            files=files,
+            total_additions=sum(f.additions for f in files),
+            total_deletions=sum(f.deletions for f in files),
+            raw_diff="",
+        )
+
+    def test_is_empty_when_no_files(self):
+        staged = self._make_staged()
+        assert staged.is_empty
+
+    def test_not_empty_with_files(self):
+        fd = FileDiff(path="foo.py", status="M", additions=1, deletions=0, diff_content="")
+        staged = self._make_staged(files=[fd])
+        assert not staged.is_empty
+
+    def test_summary_format(self):
+        fd = FileDiff(path="a.py", status="A", additions=10, deletions=0, diff_content="")
+        staged = self._make_staged(files=[fd])
+        assert "1 file(s)" in staged.summary
+        assert "+10" in staged.summary
+
+    def test_immutable(self):
+        staged = self._make_staged()
+        with pytest.raises(Exception):
+            staged.raw_diff = "something"
+
+
+class TestAnalyzeStaged:
+    @patch("gpr.git._find_repo")
+    @patch("subprocess.run")
+    def test_analyze_staged_basic(self, mock_run, mock_find_repo):
+        mock_repo = MagicMock()
+        mock_repo.working_dir = "/fake/repo"
+        mock_find_repo.return_value = mock_repo
+
+        def fake_run(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            if "--numstat" in cmd:
+                result.stdout = "5\t2\tsrc/main.py\n"
+            elif "--name-status" in cmd:
+                result.stdout = "M\tsrc/main.py\n"
+            else:
+                result.stdout = "diff --git a/src/main.py b/src/main.py\n+new\n"
+            return result
+
+        mock_run.side_effect = fake_run
+
+        staged = analyze_staged()
+        assert not staged.is_empty
+        assert len(staged.files) == 1
+        assert staged.files[0].path == "src/main.py"
+        assert staged.total_additions == 5
+
+    @patch("gpr.git._find_repo")
+    @patch("subprocess.run")
+    def test_analyze_staged_empty(self, mock_run, mock_find_repo):
+        mock_repo = MagicMock()
+        mock_repo.working_dir = "/fake/repo"
+        mock_find_repo.return_value = mock_repo
+
+        def fake_run(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            return result
+
+        mock_run.side_effect = fake_run
+        staged = analyze_staged()
+        assert staged.is_empty
+
+    @patch("gpr.git._find_repo")
+    def test_analyze_staged_git_error(self, mock_find_repo):
+        mock_find_repo.side_effect = GitError("Not a git repo")
+        with pytest.raises(GitError):
+            analyze_staged()

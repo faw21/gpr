@@ -2,8 +2,14 @@
 
 import pytest
 
-from gpr.git import BranchDiff, FileDiff
-from gpr.prompt import SYSTEM_PROMPT, build_pr_prompt, _get_format_instructions
+from gpr.git import BranchDiff, FileDiff, StagedDiff
+from gpr.prompt import (
+    COMMIT_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+    _get_format_instructions,
+    build_commit_prompt,
+    build_pr_prompt,
+)
 
 
 def _make_diff(files=None, commits=None, raw_diff=""):
@@ -112,3 +118,66 @@ class TestGetFormatInstructions:
         # Unknown style should return something (standard)
         instructions = _get_format_instructions("unknown")
         assert instructions  # Non-empty
+
+
+def _make_staged(files=None, raw_diff=""):
+    files = files or [
+        FileDiff(path="src/app.py", status="M", additions=8, deletions=2, diff_content=""),
+    ]
+    return StagedDiff(
+        files=files,
+        total_additions=sum(f.additions for f in files),
+        total_deletions=sum(f.deletions for f in files),
+        raw_diff=raw_diff,
+    )
+
+
+class TestCommitSystemPrompt:
+    def test_commit_system_prompt_exists(self):
+        assert COMMIT_SYSTEM_PROMPT
+        assert len(COMMIT_SYSTEM_PROMPT) > 50
+
+    def test_mentions_conventional(self):
+        assert "Conventional" in COMMIT_SYSTEM_PROMPT or "conventional" in COMMIT_SYSTEM_PROMPT
+
+
+class TestBuildCommitPrompt:
+    def test_includes_file_list(self):
+        staged = _make_staged()
+        prompt = build_commit_prompt(staged)
+        assert "src/app.py" in prompt
+
+    def test_includes_summary(self):
+        staged = _make_staged()
+        prompt = build_commit_prompt(staged)
+        assert "staged" in prompt.lower() or "file" in prompt.lower()
+
+    def test_includes_diff_when_present(self):
+        staged = _make_staged(raw_diff="diff --git a/f.py b/f.py\n+line")
+        prompt = build_commit_prompt(staged)
+        assert "diff --git" in prompt
+
+    def test_no_diff_section_when_empty(self):
+        staged = _make_staged(raw_diff="")
+        prompt = build_commit_prompt(staged)
+        assert "```diff" not in prompt
+
+    def test_includes_conventional_commit_format(self):
+        staged = _make_staged()
+        prompt = build_commit_prompt(staged)
+        assert "feat" in prompt or "type" in prompt.lower()
+
+    def test_file_status_labels(self):
+        files = [
+            FileDiff(path="new.py", status="A", additions=10, deletions=0, diff_content=""),
+            FileDiff(path="old.py", status="D", additions=0, deletions=5, diff_content=""),
+        ]
+        staged = _make_staged(files=files)
+        prompt = build_commit_prompt(staged)
+        assert "added" in prompt
+        assert "deleted" in prompt
+
+    def test_output_only_instruction(self):
+        staged = _make_staged()
+        prompt = build_commit_prompt(staged)
+        assert "only" in prompt.lower() or "output" in prompt.lower()

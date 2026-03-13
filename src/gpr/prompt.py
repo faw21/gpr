@@ -1,8 +1,8 @@
-"""Prompt templates for PR generation."""
+"""Prompt templates for PR and commit generation."""
 
 from __future__ import annotations
 
-from .git import BranchDiff
+from .git import BranchDiff, StagedDiff
 
 
 SYSTEM_PROMPT = """You are an expert software engineer who writes clear, concise pull request descriptions.
@@ -48,6 +48,51 @@ Changes: {diff.summary}
 {diff_section}
 
 {format_instructions}"""
+
+
+COMMIT_SYSTEM_PROMPT = """You are an expert software engineer who writes clear, concise git commit messages.
+Follow the Conventional Commits specification exactly. Be specific about what changed and why.
+Never use vague language like "various fixes" or "update code"."""
+
+
+def build_commit_prompt(staged: StagedDiff) -> str:
+    """Build the prompt for commit message generation.
+
+    Args:
+        staged: The staged diff to describe
+
+    Returns:
+        Formatted prompt string
+    """
+    files_section = "## Staged Files\n"
+    status_labels = {"A": "added", "M": "modified", "D": "deleted", "R": "renamed"}
+    for f in staged.files:
+        status = status_labels.get(f.status, "changed")
+        files_section += f"- `{f.path}` ({status}, +{f.additions}/-{f.deletions})\n"
+
+    diff_section = ""
+    if staged.raw_diff:
+        diff_section = f"## Diff\n```diff\n{staged.raw_diff}\n```"
+
+    return f"""Analyze the following staged git changes and write a commit message.
+
+Changes: {staged.summary}
+
+{files_section}
+
+{diff_section}
+
+Write a conventional commit message following this format:
+<type>(<scope>): <description>
+
+[optional body]
+
+Rules:
+- type: feat, fix, refactor, docs, test, chore, perf, style, ci, build
+- scope: the module/component affected (lowercase, optional but preferred)
+- description: imperative mood, max 72 chars, no period at end
+- body: explain WHY if not obvious, wrap at 72 chars
+- Output ONLY the commit message, no extra text or markdown fences"""
 
 
 def _get_format_instructions(style: str) -> str:
