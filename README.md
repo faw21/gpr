@@ -180,6 +180,20 @@ gpr --raw --provider ollama > pr_description.md
 - Git repository with at least one commit
 - One of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or running Ollama
 
+---
+
+## Related Tools
+
+**[gitbrief](https://github.com/faw21/gitbrief)** — Pack the right files from any repo into LLM-ready context using git history.
+
+```bash
+# The two tools complement each other perfectly:
+gitbrief . --changed-only --clipboard  # pack only changed files for PR review context
+gpr                                    # generate the PR description from the same diff
+```
+
+---
+
 ## License
 
 MIT
