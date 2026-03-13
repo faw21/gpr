@@ -184,12 +184,16 @@ gpr --raw --provider ollama > pr_description.md
 
 ## Related Tools
 
+**[standup-ai](https://github.com/faw21/standup-ai)** — Generate your daily standup from git history using AI.
+
 **[gitbrief](https://github.com/faw21/gitbrief)** — Pack the right files from any repo into LLM-ready context using git history.
 
 ```bash
-# The two tools complement each other perfectly:
-gitbrief . --changed-only --clipboard  # pack only changed files for PR review context
-gpr                                    # generate the PR description from the same diff
+# The full AI-powered git workflow:
+standup-ai                    # 1. morning standup
+gitbrief . --changed-only     # 2. pack context for code review
+gpr                           # 3. generate PR description
+gpr --commit-run              # 4. commit with AI message
 ```
 
 ---
