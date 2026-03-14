@@ -209,6 +209,10 @@ changelog-ai --release-version v1.x.0 --prepend CHANGELOG.md  # 7. update change
 
 ---
 
+- [difftests](https://github.com/faw21/difftests) — AI test generator from git diffs
+
+- [critiq-action](https://github.com/faw21/critiq-action) — critiq as a GitHub Action for CI
+
 ## License
 
 MIT
