@@ -42,8 +42,7 @@ class OpenAIProvider(BaseProvider):
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
-                    "max_tokens": 1024,
-                    "temperature": 0.3,
+                    "max_completion_tokens": 1024,
                 },
                 timeout=30.0,
             )
