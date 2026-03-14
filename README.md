@@ -213,6 +213,10 @@ changelog-ai --release-version v1.x.0 --prepend CHANGELOG.md  # 7. update change
 
 - [critiq-action](https://github.com/faw21/critiq-action) — critiq as a GitHub Action for CI
 
+- [testfix](https://github.com/faw21/testfix) — AI test fixer — automatically fix failing tests
+
+- [mergefix](https://github.com/faw21/mergefix) — AI merge conflict resolver: fix all conflicts with one command
+
 ## License
 
 MIT
