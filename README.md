@@ -194,6 +194,8 @@ gpr --raw --provider ollama > pr_description.md
 
 **[git-chronicle](https://github.com/faw21/chronicle)** — AI-powered git history narrator. Turns your git log into engaging stories (narrative, timeline, or detective mode).
 
+**[prcat](https://github.com/faw21/prcat)** — AI reviewer for teammates' pull requests. Summarizes, flags risks, and suggests review comments.
+
 ```bash
 # The full AI-powered git workflow:
 standup-ai --yesterday                                    # 1. morning standup
@@ -201,7 +203,8 @@ critiq                                                    # 2. AI review before 
 gpr --commit-run                                          # 3. commit with AI message
 gitbrief . --changed-only --clipboard                    # 4. pack context for PR review
 gpr                                                       # 5. generate PR description
-changelog-ai --release-version v1.x.0 --prepend CHANGELOG.md  # 6. update changelog
+prcat 42                                                  # 6. AI review of teammate's PR
+changelog-ai --release-version v1.x.0 --prepend CHANGELOG.md  # 7. update changelog
 ```
 
 ---
